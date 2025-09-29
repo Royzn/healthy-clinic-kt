@@ -1,6 +1,6 @@
 package data_class
 
-class JanjiTemu(
+data class JanjiTemu(
     val pasien: Pasien,
     val dokter: Dokter,
     val jam: Int,

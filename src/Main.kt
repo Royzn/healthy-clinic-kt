@@ -224,7 +224,8 @@ fun main() {
                 } else {
                     println("Tagihan untuk pasien ${tagihanPasien[0].janjiTemu.pasien.nama}:")
                     tagihanPasien.forEachIndexed { index, tagihan ->
-                        println("${index + 1}. ID Tagihan: ${tagihan.id}, Total Bayar: Rp ${tagihan.totalBayar}, Metode Pembayaran: ${tagihan.tipePembayaran}")
+                        val nominal = if (tagihan.tipePembayaran == "Denda") tagihan.dendaNoShow else tagihan.totalBayar
+                        println("${index + 1}. ID Tagihan: ${tagihan.id}, Total Bayar: Rp $nominal, Metode Pembayaran: ${tagihan.tipePembayaran}")
                     }
                 }
             }
@@ -270,7 +271,8 @@ fun main() {
                 }
                 val janji = janjiListPasien[janjiInput - 1]
 
-                ClinicService.batalkanJanji(janji.pasien.id, janji.dokter.id)
+                ClinicService.batalkanJanji(janji)
+
             }
 
             "8" -> {

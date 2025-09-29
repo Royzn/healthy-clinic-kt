@@ -3,6 +3,8 @@ package service
 import data_class.*
 import payment.*
 
+private fun JanjiTemu.copy(status: StatusJanji) {}
+
 object ClinicService {
 
     private val pasienList = mutableListOf<Pasien>()
@@ -64,9 +66,12 @@ object ClinicService {
             return false
         }
 
-        val janjiDokterHariIni = janjiList.count { it.dokter.id == dokterId && it.jam == jam }
+        val janjiDokterHariIni = janjiList.count {
+            it.dokter.id == dokterId && it.status == StatusJanji.Aktif
+        }
+
         if (janjiDokterHariIni >= MAX_ANTRIAN_PER_DOKTER) {
-            println("Antrian dokter sudah penuh.")
+            println("Antrian dokter sudah penuh (maksimal $MAX_ANTRIAN_PER_DOKTER pasien aktif).")
             return false
         }
 
@@ -88,16 +93,11 @@ object ClinicService {
     fun laporanHarian() {
         println("=== Laporan Harian Klinik ===")
 
-        // Hitung janji per dokter
+        // Hitung janji per dokter (hanya yang aktif/batal tetap dihitung di list janji)
         val janjiPerDokter = janjiList.groupingBy { it.dokter }.eachCount()
 
-        // Total pemasukan (sum semua tagihan)
-        var totalPemasukan = janjiList.sumOf { janji ->
-            janji.dokter.biayaDasar
-        }
-
-        val totalDenda = tagihanList.sumOf { it.dendaNoShow }
-        totalPemasukan += totalDenda
+        // Total pemasukan klinik (biaya + denda)
+        val totalPemasukan = tagihanList.sumOf { it.totalBayar + it.dendaNoShow }
 
         println("Total Janji per Dokter:")
         janjiPerDokter.forEach { (dokter, jumlah) ->
@@ -115,12 +115,11 @@ object ClinicService {
 
         println("=============================")
 
-        // Tambahan: Export laporan ringkas dalam bentuk tabel
+        // Tabel ringkas
         println("\n=== Tabel Ringkas Laporan Klinik ===")
         println(String.format("%-20s | %-12s | %-15s", "Nama Dokter", "Jumlah Janji", "Total Pemasukan"))
         println("-".repeat(53))
 
-        // Grup tagihan per dokter
         val tagihanPerDokter = tagihanList.groupBy { it.janjiTemu.dokter }
 
         dokterList.forEach { dokter ->
@@ -134,6 +133,7 @@ object ClinicService {
 
         println("-".repeat(53))
     }
+
 
     fun getTagihanByPasienId(pasienId: String): List<Tagihan> {
         return tagihanList.filter { it.janjiTemu.pasien.id == pasienId }
@@ -154,33 +154,34 @@ object ClinicService {
 
         println("Antrian janji untuk dokter ID $dokterId:")
         janjiPrioritas.forEachIndexed { index, janji ->
-            println("${index + 1}. Jam: ${janji.jam} - Pasien: ${janji.pasien.nama} (Kategori: ${janji.pasien.kategori})")
+            println("${index + 1}. Jam: ${janji.jam} - Pasien: ${janji.pasien.nama} " +
+                    "(Kategori: ${janji.pasien.kategori}, Status: ${janji.status})")
         }
     }
 
-    fun batalkanJanji(pasienId: String, dokterId: String): Boolean {
-        val janji = janjiList.find {
-            it.pasien.id == pasienId && it.dokter.id == dokterId && it.status == StatusJanji.Aktif
-        }
+    fun batalkanJanji(janji: JanjiTemu) {
+        val idx = janjiList.indexOf(janji)
+        if (idx != -1) {
+            val janjiDibatalkan = janji.copy(status = StatusJanji.Batal)
+            janjiList[idx] = janjiDibatalkan
 
-        if (janji == null) {
-            println("Janji tidak ditemukan atau sudah dibatalkan.")
-            return false
-        }
+            // Tambahkan tagihan dengan denda
+            val tagihanDenda = Tagihan(
+                id = generateTagihanId(),
+                janjiTemu = janjiDibatalkan,
+                totalBayar = 0,               // tidak ada biaya konsultasi
+                tipePembayaran = "Denda",
+                dendaNoShow = 50000           // catat denda
+            )
+            tagihanList.add(tagihanDenda)
 
-        // Langsung beri status NoShow dan denda
-        janji.status = StatusJanji.NoShow
-        val tagihanDenda = Tagihan(
-            generateTagihanId(),
-            janji,
-            DENDA_NO_SHOW,
-            "Denda NoShow",
-            DENDA_NO_SHOW
-        )
-        tagihanList.add(tagihanDenda)
-        println("Janji dibatalkan dan dikenakan denda sebesar Rp $DENDA_NO_SHOW.")
-        return true
+            println("Janji pasien ${janji.pasien.nama} dengan dokter ${janji.dokter.nama} dibatalkan.")
+            println("Denda Rp50.000 ditambahkan ke tagihan pasien.")
+        }
     }
+
+
+
 
     fun getPasienList() = pasienList.toList()
     fun getDokterList() = dokterList.toList()
